@@ -10,9 +10,9 @@ import space.accident.language.config.Config;
 import java.io.*;
 import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Properties;
+import java.util.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.stream.Collectors;
 
 import static space.accident.language.config.Config.needSaveAll;
 
@@ -44,19 +44,34 @@ public class SpaceLang {
 			e.printStackTrace();
 		}
 		
-		for (String lang : Config.langList) {
-			Properties prop = langFiles.get(lang);
-			if (prop != null) {
-				File langFile = new File(langFolder, lang + ".lang");
-				try (FileOutputStream stream = new FileOutputStream(langFile);
-					 OutputStreamWriter writer = new OutputStreamWriter(stream, StandardCharsets.UTF_8);
-					 BufferedWriter bufferedWriter = new BufferedWriter(writer, 8 * 1024)) {
-					prop.store(bufferedWriter, "All lang files from mods");
-				} catch (Exception e) {
-					e.printStackTrace();
+		Map<String, Properties> finalLangFiles = langFiles;
+		
+		CompletableFuture.runAsync(() -> {
+			for (String lang : Config.langList) {
+				Properties prop = finalLangFiles.get(lang);
+				if (prop != null) {
+					File langFile = new File(langFolder, lang + ".lang");
+					try (FileOutputStream stream = new FileOutputStream(langFile);
+						 OutputStreamWriter writer = new OutputStreamWriter(stream, StandardCharsets.UTF_8);
+						 BufferedWriter bufferedWriter = new BufferedWriter(writer)) {
+						prop.entrySet().stream()
+								.sorted((e1, e2) -> e1.getKey().toString().compareTo(e2.getKey().toString()))
+								.collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, (e1, e2) -> e1, LinkedHashMap::new))
+								.forEach((key, value) -> {
+									try {
+										bufferedWriter.write(key + "=" + value);
+										bufferedWriter.newLine();
+									} catch (Exception e) {
+										e.printStackTrace();
+									}
+								});
+//						prop.store(bufferedWriter, "All lang files from mods");
+					} catch (Exception e) {
+						e.printStackTrace();
+					}
 				}
 			}
-		}
+		});
 	}
 	
 	private static void searchDirForLanguages(File source, String path, Side side) throws IOException {
